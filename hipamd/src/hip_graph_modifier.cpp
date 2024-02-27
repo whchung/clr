@@ -17,7 +17,7 @@ namespace {
 void loadExternalSymbols(const std::vector<std::pair<std::string, std::string>>& fusedGroups) {
   HIP_INIT_VOID();
   for (auto& [symbolName, imagePath] : fusedGroups) {
-    hip::PlatformState::instance().loadExternalSymbol(symbolName, imagePath);
+    PlatformState::instance().loadExternalSymbol(symbolName, imagePath);
   }
 }
 
@@ -29,7 +29,7 @@ dim3 max(dim3& one, dim3& two) {
 class FusionGroup : public hip::GraphNode {
  public:
   FusionGroup() : hip::GraphNode(hipGraphNodeTypeKernel) {
-    semaphore_ = hip::PlatformState::instance().getSemaphore();
+    semaphore_ = PlatformState::instance().getSemaphore();
   }
   virtual ~FusionGroup() { delete fusedNode_; };
   void addNode(hip::GraphKernelNode* node) { fusee_.push_back(node); }
