@@ -989,3 +989,4 @@ void ExternalCOs::load(const std::string& symbolName, const std::string& imagePa
     delete hipFunc;
   }
 }
+}
