@@ -47,7 +47,7 @@ if(CLR_BUILD_HIP)
     endif()
     message(STATUS "HIPCC Binary Directory: ${HIPCC_BIN_DIR}")
 
-    if(NOT EXISTS ${HIPCC_BIN_DIR}/hipconfig)
+    if(NOT EXISTS ${HIPCC_BIN_DIR}/../hipconfig)
         message(FATAL_ERROR "Please pass hipcc/build or hipcc/bin using -DHIPCC_BIN_DIR.")
     endif()
 
