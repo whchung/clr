@@ -1139,6 +1139,12 @@ hipError_t ihipGraphInstantiate(hip::GraphExec** pGraphExec, hip::Graph* graph,
   if (pGraphExec == nullptr || graph == nullptr) {
     return hipErrorInvalidValue;
   }
+  
+  {
+    int i = 0;
+    while (0 == i)
+      sleep(5);
+  }
 
   if (hip::GraphFuseRecorder::isRecordingOn()) {
     hip::GraphFuseRecorder recorder(graph);
