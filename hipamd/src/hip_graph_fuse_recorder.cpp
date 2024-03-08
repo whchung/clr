@@ -194,6 +194,7 @@ bool GraphFuseRecorder::findCandidates(const std::vector<Node>& nodes) {
       if (!isBlockSizeEqual) {
         append(fusionGroups_);
         append(fusedExecutionOrder_);
+        referenceBlockSize = params.blockDim;
       }
       fusionGroups_.back().push_back(node);
       fusedExecutionOrder_.back().push_back(i);
