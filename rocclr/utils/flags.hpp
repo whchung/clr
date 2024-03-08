@@ -236,6 +236,8 @@ release(cstring, HIPRTC_COMPILE_OPTIONS_APPEND, "",                           \
         "Set compile options needed for hiprtc compilation")                  \
 release(cstring, HIPRTC_LINK_OPTIONS_APPEND, "",                              \
         "Set link options needed for hiprtc compilation")                     \
+release(bool, DEBUG_HIP_GRAPH_DOT_PRINT, false,                               \
+         "Enable/Disable graph debug dot print dump")                         \
 
 namespace amd {
 

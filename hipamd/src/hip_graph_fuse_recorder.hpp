@@ -17,6 +17,7 @@ class GraphFuseRecorder {
  public:
   GraphFuseRecorder(hip::Graph* graph);
   void run();
+  // void dumpGraphNodesInfo(const std::vector<Node>& nodes);
   static bool isRecordingOn();
   static hipKernelNodeParams getKernelNodeParams(GraphNode* node);
   static amd::Kernel* getDeviceKernel(hipKernelNodeParams& nodeParams);
