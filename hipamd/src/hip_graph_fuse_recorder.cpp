@@ -152,32 +152,10 @@ amd::Kernel* GraphFuseRecorder::getDeviceKernel(GraphNode* node) {
   return GraphFuseRecorder::getDeviceKernel(nodeParams);
 }
 
-// void GraphFuseRecorder::dumpGraphNodesInfo(const std::vector<Node>& nodes) {
-//   YAML::Emitter out;  
-//   out << YAML::BeginSeq;  
-//   for (size_t i = 0; i < nodes.size() - 1; ++i) {
-//     auto& node = nodes[i];
-//     auto params = GraphFuseRecorder::getKernelNodeParams(node);
-//     out << YAML::BeginMap;
-//     out << YAML::Key << "kernel node: ";
-//     out << YAML::Value << i;
-//     out << YAML::Key << "in-degree: ";
-//     out << YAML::Value << node->GetInDegree();
-//     out << YAML::Key << "out-degree: ";
-//     out << YAML::Value << node->GetOutDegree();
-//     out << YAML::Key << "nextID: ";
-//     out << YAML::Value << node.;
-//     out << YAML::Key << "Kernel Node: ";
-//     out << YAML::Value << i;
-//     out << YAML::Key << "Kernel Node: ";
-//     out << YAML::Value << i;
-//   }
-// }
-
 void GraphFuseRecorder::run() {
   amd::ScopedLock lock(fclock_);
   const auto& nodes = graph_->GetNodes();
-  // dumpGraphNodesInfo(nodes);
+  dumpGraphNodesInfo(nodes);
   if (!findCandidates(nodes)) {
     return;
   }
@@ -191,18 +169,6 @@ void GraphFuseRecorder::run() {
 }
 
 bool GraphFuseRecorder::findCandidates(const std::vector<Node>& nodes) {
-  for (size_t i = 0; i < nodes.size() - 1; ++i) {
-    auto& node = nodes[i];
-    const auto outDegree = node->GetOutDegree();
-    if (outDegree != 1) {
-      std::stringstream msg;
-      msg << "cannot perform fusion because node `" << i << "` contains multiple output edges. "
-          << "Number of output edges equals " << outDegree;
-      LogPrintfError("%s", msg.str().c_str());
-      return false;
-    }
-  }
-
   fusionGroups_.push_back(std::vector<Node>());
   fusedExecutionOrder_.push_back(std::vector<size_t>());
   dim3 referenceBlockSize{};
