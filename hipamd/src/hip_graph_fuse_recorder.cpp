@@ -155,11 +155,9 @@ amd::Kernel* GraphFuseRecorder::getDeviceKernel(GraphNode* node) {
 void GraphFuseRecorder::run() {
   amd::ScopedLock lock(fclock_);
   const auto& nodes = graph_->GetNodes();
-  dumpGraphNodesInfo(nodes);
   if (!findCandidates(nodes)) {
     return;
   }
-
   std::vector<KernelDescriptions> groupDescriptions{};
   for (auto& group : fusionGroups_) {
     auto description = collectImages(group);
@@ -244,6 +242,7 @@ GraphFuseRecorder::KernelDescriptions GraphFuseRecorder::collectImages(
     const auto& node = group[i];
     auto params = GraphFuseRecorder::getKernelNodeParams(node);
     descr.gridDim = params.gridDim;
+    descr.blockDim = params.blockDim;
 
     auto* kernel = GraphFuseRecorder::getDeviceKernel(params);
     descr.name = kernel->name();
@@ -325,6 +324,9 @@ void GraphFuseRecorder::saveFusionConfig(std::vector<KernelDescriptions>& groupD
       out << YAML::Key << "location" << YAML::Value << description.location;
       out << YAML::Key << "gridDim" << YAML::Value << YAML::Flow << YAML::BeginSeq
           << description.gridDim.x << description.gridDim.y << description.gridDim.z
+          << YAML::EndSeq;
+      out << YAML::Key << "blockDim" << YAML::Value << YAML::Flow << YAML::BeginSeq
+          << description.blockDim.x << description.blockDim.y << description.blockDim.z
           << YAML::EndSeq;
 
       out << YAML::Key << "argSizes" << YAML::Value << YAML::Flow << YAML::BeginSeq;

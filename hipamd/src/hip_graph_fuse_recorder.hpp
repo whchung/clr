@@ -51,6 +51,7 @@ class GraphFuseRecorder {
     std::string name{};
     std::string location{};
     dim3 gridDim{};
+    dim3 blockDim{};
     std::vector<size_t> argsSizes{};
     std::vector<int> argsTypes{};
   };
