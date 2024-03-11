@@ -324,7 +324,8 @@ GraphFuseRecorder::KernelDescriptions GraphFuseRecorder::collectImages(
 void GraphFuseRecorder::saveGraphResourceUsage(std::vector<KernelDescription>& fullGraphDescriptions) {
   YAML::Emitter out;
   out << YAML::BeginMap;
-  out << YAML::Key << "total # of kernels in captured graph" << YAML::Value << fullGraphDescriptions.size() << YAML::Newline;
+  out << YAML::Key << "total-graph-nodes" << YAML::Value << fullGraphDescriptions.size() << YAML::Newline;
+  out << YAML::Key << "kernels" << YAML::Value << YAML::BeginSeq;
   for (const auto& desc : fullGraphDescriptions) {
     out << YAML::BeginMap;
     out << YAML::Key << "kernel-name";
@@ -341,7 +342,7 @@ void GraphFuseRecorder::saveGraphResourceUsage(std::vector<KernelDescription>& f
     out << YAML::Value << YAML::Flow << YAML::BeginSeq << desc.blockDim.x << desc.blockDim.y << desc.blockDim.z << YAML::EndSeq;
     out << YAML::EndMap;
   }
-  out << YAML::BeginMap;
+  out << YAML::EndSeq << YAML::EndMap;
 
   auto fileName = std::string("graph") + std::to_string(instanceId_) + std::string("-info") + std::string(".yaml");
   auto configPath = GraphFuseRecorder::generateFilePath(fileName);
