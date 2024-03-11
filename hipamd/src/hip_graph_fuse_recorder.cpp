@@ -318,7 +318,7 @@ GraphFuseRecorder::KernelDescriptions GraphFuseRecorder::collectImages(
   return descriptions;
 }
 
-void saveGraphResourceUsage(std::vector<KernelDescription>& fullGraphDescriptions) {
+void GraphFuseRecorder::saveGraphResourceUsage(std::vector<KernelDescription>& fullGraphDescriptions) {
   YAML::Emitter out;
   out << YAML::Key << "total # of kernels in captured graph";
   out << YAML::Value << fullGraphDescriptions.size();
