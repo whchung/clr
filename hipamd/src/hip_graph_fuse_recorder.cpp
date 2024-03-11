@@ -257,7 +257,7 @@ GraphFuseRecorder::KernelDescriptions GraphFuseRecorder::extractGraphResourceUsa
     KernelDescription descr{};
     auto& node = nodes[i];
     descr.inDegree = node->GetInDegree();
-    descr.outDegree node->GetOutDegree();
+    descr.outDegree = node->GetOutDegree();
     descr.nodeID = node->GetID();
     auto params = GraphFuseRecorder::getKernelNodeParams(node);
     auto* kernel = GraphFuseRecorder::getDeviceKernel(params);
