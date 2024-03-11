@@ -54,6 +54,9 @@ class GraphFuseRecorder {
     dim3 blockDim{};
     std::vector<size_t> argsSizes{};
     std::vector<int> argsTypes{};
+    size_t inDegree;
+    size_t outDegree;
+    int nodeID;
   };
   using KernelDescriptions = std::vector<KernelDescription>;
 
@@ -63,7 +66,9 @@ class GraphFuseRecorder {
   static std::string generateImagePath(size_t imageId);
 
   bool findCandidates(const std::vector<Node>& nodes);
+  KernelDescriptions extractGraphResourceUsage(const std::vector<Node>& nodes);
   KernelDescriptions collectImages(const std::vector<Node>& nodes);
+  void saveGraphResourceUsage(std::vector<KernelDescription>& fullGraphDescriptions);
   void saveImageToDisk(ImageHandle& imageHandle);
   void saveFusionConfig(std::vector<KernelDescriptions>& groupDescriptions);
 
@@ -80,6 +85,7 @@ class GraphFuseRecorder {
   static CounterType instanceCounter_;
   static bool isRecordingStateQueried_;
   static bool isRecordingSwitchedOn_;
+  static std::string fusionDumpGraph_;
   static std::string tmpDirName_;
   static ImageCacheType imageCache_;
   static std::vector<std::string> savedFusionConfigs_;
