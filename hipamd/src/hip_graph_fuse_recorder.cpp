@@ -188,6 +188,19 @@ void GraphFuseRecorder::run() {
 }
 
 bool GraphFuseRecorder::findCandidates(const std::vector<Node>& nodes) {
+  // TODO: Need to asses how nodes with outDegree/inDegree > 1 will need to be processed
+  // for (size_t i = 0; i < nodes.size() - 1; ++i) {
+  //   auto& node = nodes[i];
+  //   const auto outDegree = node->GetOutDegree();
+  //   if (outDegree != 1) {
+  //     std::stringstream msg;
+  //     msg << "cannot perform fusion because node `" << i << "` contains multiple output edges. "
+  //         << "Number of output edges equals " << outDegree;
+  //     LogPrintfError("%s", msg.str().c_str());
+  //     return false;
+  //   }
+  // }
+  
   fusionGroups_.push_back(std::vector<Node>());
   fusedExecutionOrder_.push_back(std::vector<size_t>());
   dim3 referenceBlockSize{};
