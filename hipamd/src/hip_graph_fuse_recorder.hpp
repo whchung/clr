@@ -65,7 +65,10 @@ class GraphFuseRecorder {
   static std::string generateFilePath(const std::string& name);
   static std::string generateImagePath(size_t imageId);
 
+  // Identify binary kernel fusion candidates
   bool findCandidates(const std::vector<Node>& nodes);
+  // Identify code object rearrangement candidates
+  bool findRearrangeCandidates(const std::vector<Node>& nodes);
   KernelDescriptions extractGraphResourceUsage(const std::vector<Node>& nodes);
   KernelDescriptions collectImages(const std::vector<Node>& nodes);
   void saveGraphResourceUsage(std::vector<KernelDescription>& fullGraphDescriptions);

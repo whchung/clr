@@ -172,8 +172,19 @@ amd::Kernel* GraphFuseRecorder::getDeviceKernel(GraphNode* node) {
 void GraphFuseRecorder::run() {
   amd::ScopedLock lock(fclock_);
   const auto& nodes = graph_->GetNodes();
-  if (!findCandidates(nodes)) {
-    return;
+  auto* env = getenv("AMD_FUSION_REARRANGE_ONLY");
+  bool rearrangeOnly{false};
+  rearrangeOnly = (env != nullptr) && enabled(std::string(env));
+  if (rearrangeOnly) {
+    // Logic for code object rearrangement.
+    if (!findRearrangeCandidates(nodes)) {
+      return;
+    }
+  } else {
+    // Logic for binary kernel fusion.
+    if (!findCandidates(nodes)) {
+     return;
+    }
   }
   std::vector<KernelDescriptions> groupDescriptions{};
   for (auto& group : fusionGroups_) {
@@ -185,6 +196,55 @@ void GraphFuseRecorder::run() {
     auto fullGraphDescriptions = extractGraphResourceUsage(nodes);
     saveGraphResourceUsage(fullGraphDescriptions);
   }
+}
+
+
+bool GraphFuseRecorder::findRearrangeCandidates(const std::vector<Node>& nodes) {
+  fusionGroups_.push_back(std::vector<Node>());
+  fusedExecutionOrder_.push_back(std::vector<size_t>());
+  for (size_t i = 0; i < nodes.size(); ++i) {
+    auto& node = nodes[i];
+    const auto type = node->GetType();
+
+    if (type == hipGraphNodeTypeKernel) {
+      if (!isRecording) {
+        append(fusionGroups_);
+        append(fusedExecutionOrder_);
+      }
+      isRecording = true;
+
+      fusionGroups_.back().push_back(node);
+      fusedExecutionOrder_.back().push_back(i);
+    }
+
+    if (type != hipGraphNodeTypeKernel) {
+      isRecording = false;
+
+      append(fusedExecutionOrder_);
+      fusedExecutionOrder_.back().push_back(i);
+      continue;
+    }
+  }
+
+  fusionGroups_.erase(std::remove_if(fusionGroups_.begin(), fusionGroups_.end(),
+                                     [](auto& group) { return group.size() <= 1; }),
+                      fusionGroups_.end());
+
+  if (fusionGroups_.empty()) {
+    LogPrintfError("%s", "could not find fusion candidates");
+    return false;
+  }
+
+  fusedExecutionOrder_.erase(
+      std::remove_if(fusedExecutionOrder_.begin(), fusedExecutionOrder_.end(),
+                     [](auto& sequence) { return sequence.empty(); }),
+      fusedExecutionOrder_.end());
+
+  size_t nodeCounter{0};
+  std::for_each(fusedExecutionOrder_.begin(), fusedExecutionOrder_.end(),
+                [&nodeCounter](auto& item) { nodeCounter += item.size(); });
+  guarantee(nodeCounter == nodes.size(), "failed to process execution sequences");
+  return true;
 }
 
 bool GraphFuseRecorder::findCandidates(const std::vector<Node>& nodes) {
