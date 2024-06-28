@@ -188,79 +188,14 @@ void GraphFuseRecorder::run() {
 }
 
 bool GraphFuseRecorder::findCandidates(const std::vector<Node>& nodes) {
-  // TODO: Need to asses how nodes with outDegree/inDegree > 1 will need to be processed
-  // for (size_t i = 0; i < nodes.size() - 1; ++i) {
-  //   auto& node = nodes[i];
-  //   const auto outDegree = node->GetOutDegree();
-  //   if (outDegree != 1) {
-  //     std::stringstream msg;
-  //     msg << "cannot perform fusion because node `" << i << "` contains multiple output edges. "
-  //         << "Number of output edges equals " << outDegree;
-  //     LogPrintfError("%s", msg.str().c_str());
-  //     return false;
-  //   }
-  // }
-  
-  fusionGroups_.push_back(std::vector<Node>());
-  fusedExecutionOrder_.push_back(std::vector<size_t>());
-  dim3 referenceBlockSize{};
-  bool isRecording{true};
   for (size_t i = 0; i < nodes.size(); ++i) {
     auto& node = nodes[i];
-    const auto type = node->GetType();
-    const auto outDegree = node->GetOutDegree();
-
-    if (type == hipGraphNodeTypeKernel) {
-      if (!isRecording) {
-        append(fusionGroups_);
-        append(fusedExecutionOrder_);
-      }
-      isRecording = true;
-
-      auto params = GraphFuseRecorder::getKernelNodeParams(node);
-      auto* kernel = GraphFuseRecorder::getDeviceKernel(params);
-
-      if (fusionGroups_.back().empty()) {
-        referenceBlockSize = params.blockDim;
-      }
-
-      const bool isBlockSizeEqual = equal(referenceBlockSize, params.blockDim);
-      if (!isBlockSizeEqual) {
-        append(fusionGroups_);
-        append(fusedExecutionOrder_);
-        referenceBlockSize = params.blockDim;
-      }
-      fusionGroups_.back().push_back(node);
-      fusedExecutionOrder_.back().push_back(i);
-    }
-
-    if (type != hipGraphNodeTypeKernel) {
-      isRecording = false;
-
-      append(fusedExecutionOrder_);
-      fusedExecutionOrder_.back().push_back(i);
-      continue;
-    }
+    append(fusionGroups_);
+    append(fusedExecutionOrder_);
+    fusionGroups_.back().push_back(node);
+    fusedExecutionOrder_.back().push_back(i);
   }
 
-  fusionGroups_.erase(std::remove_if(fusionGroups_.begin(), fusionGroups_.end(),
-                                     [](auto& group) { return group.size() <= 1; }),
-                      fusionGroups_.end());
-
-  if (fusionGroups_.empty()) {
-    LogPrintfError("%s", "could not find fusion candidates");
-    return false;
-  }
-
-  fusedExecutionOrder_.erase(
-      std::remove_if(fusedExecutionOrder_.begin(), fusedExecutionOrder_.end(),
-                     [](auto& sequence) { return sequence.empty(); }),
-      fusedExecutionOrder_.end());
-
-  size_t nodeCounter{0};
-  std::for_each(fusedExecutionOrder_.begin(), fusedExecutionOrder_.end(),
-                [&nodeCounter](auto& item) { nodeCounter += item.size(); });
-  guarantee(nodeCounter == nodes.size(), "failed to process execution sequences");
   return true;
 }
 
