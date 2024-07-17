@@ -1,8 +1,12 @@
 #include "hip_graph_modifier.hpp"
+#include "cl_kernel.h"
 #include "hip/hip_runtime_api.h"
 #include "hip_graph_fuse_recorder.hpp"
 #include <algorithm>
 #include <cassert>
+#include <cstddef>
+#include <cstdint>
+#include <cstdlib>
 #include <fstream>
 #include <filesystem>
 #include <memory>
@@ -10,6 +14,7 @@
 #include <unordered_map>
 #include <vector>
 #include "hip_graph_internal.hpp"
+#include "platform/kernel.hpp"
 #include <yaml-cpp/yaml.h>
 
 
@@ -25,7 +30,6 @@ dim3 max(dim3& one, dim3& two) {
   return dim3(std::max(one.x, two.x), std::max(one.y, two.y), std::max(one.z, two.z));
 }
 
-
 class FusionGroup : public hip::GraphNode {
  public:
   FusionGroup() : hip::GraphNode(hipGraphNodeTypeKernel) {
@@ -38,6 +42,10 @@ class FusionGroup : public hip::GraphNode {
   hip::GraphKernelNode* getTail() { return fusee_.empty() ? nullptr : fusee_.back(); }
 
   hip::GraphKernelNode* getFusedNode() { return fusedNode_; }
+  void dumpExtra(hipKernelNodeParams nodeParams);
+  void dumpDescriptor(amd::Kernel* kernel);
+  char* clk_value_type_to_string(clk_value_type_t type);
+  void insertAlignKernarg(size_t alignment, uint8_t* kernarg, size_t kernargSize, size_t* kernargs_combined_size);
   void generateNode(void* functionHandle);
   hipKernelNodeParams* getNodeParams() { return &fusedNodeParams_; }
 
@@ -47,45 +55,186 @@ class FusionGroup : public hip::GraphNode {
   hip::GraphKernelNode* fusedNode_;
   hipKernelNodeParams fusedNodeParams_{};
   std::vector<void*> kernelArgs_{};
+  std::vector<uint8_t> gemmKernelArgs_{};
   std::vector<void*> hiddenkernelArgs_{};
   void* semaphore_{};
 };
+
+char* FusionGroup::clk_value_type_to_string(clk_value_type_t type) {  
+    switch (type) {  
+        case T_VOID: return "T_VOID";  
+        case T_CHAR: return "T_CHAR";  
+        case T_SHORT: return "T_SHORT";  
+        case T_INT: return "T_INT";  
+        case T_LONG: return "T_LONG";  
+        case T_FLOAT: return "T_FLOAT";  
+        case T_DOUBLE: return "T_DOUBLE";  
+        case T_POINTER: return "T_POINTER";  
+        case T_CHAR2: return "T_CHAR2";  
+        case T_CHAR3: return "T_CHAR3";  
+        case T_CHAR4: return "T_CHAR4";  
+        case T_CHAR8: return "T_CHAR8";  
+        case T_CHAR16: return "T_CHAR16";  
+        case T_SHORT2: return "T_SHORT2";  
+        case T_SHORT3: return "T_SHORT3";  
+        case T_SHORT4: return "T_SHORT4";  
+        case T_SHORT8: return "T_SHORT8";  
+        case T_SHORT16: return "T_SHORT16";  
+        case T_INT2: return "T_INT2";  
+        case T_INT3: return "T_INT3";  
+        case T_INT4: return "T_INT4";  
+        case T_INT8: return "T_INT8";  
+        case T_INT16: return "T_INT16";  
+        case T_LONG2: return "T_LONG2";  
+        case T_LONG3: return "T_LONG3";  
+        case T_LONG4: return "T_LONG4";  
+        case T_LONG8: return "T_LONG8";  
+        case T_LONG16: return "T_LONG16";  
+        case T_FLOAT2: return "T_FLOAT2";  
+        case T_FLOAT3: return "T_FLOAT3";  
+        case T_FLOAT4: return "T_FLOAT4";  
+        case T_FLOAT8: return "T_FLOAT8";  
+        case T_FLOAT16: return "T_FLOAT16";  
+        case T_DOUBLE2: return "T_DOUBLE2";  
+        case T_DOUBLE3: return "T_DOUBLE3";  
+        case T_DOUBLE4: return "T_DOUBLE4";  
+        case T_DOUBLE8: return "T_DOUBLE8";  
+        case T_DOUBLE16: return "T_DOUBLE16";  
+        case T_SAMPLER: return "T_SAMPLER";  
+        case T_SEMA: return "T_SEMA";  
+        case T_STRUCT: return "T_STRUCT";  
+        case T_QUEUE: return "T_QUEUE";  
+        case T_PAD: return "T_PAD";  
+        default: return "UNKNOWN";  
+    }  
+}  
+
+void FusionGroup::dumpDescriptor(amd::Kernel* kernel) {
+  for (int i = 0; i < kernel->signature().numParameters(); i++) {
+    const amd::KernelParameterDescriptor& desc = kernel->signature().at(i);
+    ClPrint(amd::LOG_ERROR, amd::LOG_ALWAYS, "amd::KernelParameterDescriptor - typeName_: %s", desc.typeName_.c_str());
+    ClPrint(amd::LOG_ERROR, amd::LOG_ALWAYS, "amd::KernelParameterDescriptor - name_: %s", desc.name_.c_str());
+    ClPrint(amd::LOG_ERROR, amd::LOG_ALWAYS, "amd::KernelParameterDescriptor - type_: %s", clk_value_type_to_string(desc.type_));
+    ClPrint(amd::LOG_ERROR, amd::LOG_ALWAYS, "amd::KernelParameterDescriptor - size_: %zu", desc.size_);
+  }
+}
+
+void FusionGroup::dumpExtra(hipKernelNodeParams nodeParams) {
+  ClPrint(amd::LOG_ERROR, amd::LOG_ALWAYS, "hipKernelNodeParams::extra[0] -> HIP_LAUNCH_PARAM_BUFFER_POINTER: %p", (void*)nodeParams.extra[0]);
+  ClPrint(amd::LOG_ERROR, amd::LOG_ALWAYS, "hipKernelNodeParams::extra[2] -> HIP_LAUNCH_PARAM_BUFFER_SIZE: %p", (void*)nodeParams.extra[2]);
+  ClPrint(amd::LOG_ERROR, amd::LOG_ALWAYS, "hipKernelNodeParams::extra[4] -> HIP_LAUNCH_PARAM_END: %p", (void*)nodeParams.extra[4]);
+  ClPrint(amd::LOG_ERROR, amd::LOG_ALWAYS, "hipKernelNodeParams::extra[3] -> KERNARG SIZE: %zu", *((size_t*)nodeParams.extra[3]));
+  uint8_t* kernargs = static_cast<uint8_t*>(nodeParams.extra[1]);
+  size_t k_size = *((size_t*)nodeParams.extra[3]);
+  ClPrint(amd::LOG_ERROR, amd::LOG_ALWAYS, "hipKernelNodeParams::extra[1] -> KERNARG BUFFER: ");
+  for (int i = 0; i < k_size; i++) {
+    ClPrint(amd::LOG_ERROR, amd::LOG_ALWAYS, "%02x ", kernargs[i]);
+  }
+}
+
+void FusionGroup::insertAlignKernarg(size_t alignment, uint8_t* kernarg, size_t kernargSize, size_t* kernargs_combined_size) {
+  // Calculate the padding needed to align to alignment bytes
+  size_t padding = (alignment - (kernargSize % alignment)) % alignment;
+  // Insert the new data
+  gemmKernelArgs_.insert(gemmKernelArgs_.end(), kernarg, kernarg + kernargSize);
+  // Insert padding bytes
+  gemmKernelArgs_.insert(gemmKernelArgs_.end(), padding, 0);
+  // Update combined kernel arg size to account for the extra memory used to align to alignment size
+  *kernargs_combined_size += padding;
+}
 
 void FusionGroup::generateNode(void* functionHandle) {
   fusedNodeParams_.blockDim = dim3(0, 0, 0);
   fusedNodeParams_.gridDim = dim3(0, 0, 0);
   fusedNodeParams_.sharedMemBytes = 0;
   fusedNodeParams_.func = functionHandle;
+  size_t kernargs_combined_size = 0;
+
+  // Allocate the extra buffer one time at the beginning
+  fusedNodeParams_.extra = (void**)malloc(5 * sizeof(void*));
+  if (fusedNodeParams_.extra == nullptr) {
+    ClPrint(amd::LOG_ERROR, amd::LOG_ALWAYS, "FusionGroup::generateNode() - HIP error out of memory for allocating extra!");
+  }
 
   for (auto* node : fusee_) {
     auto nodeParams = hip::GraphFuseRecorder::getKernelNodeParams(node);
     fusedNodeParams_.blockDim = max(fusedNodeParams_.blockDim, nodeParams.blockDim);
     fusedNodeParams_.gridDim = max(fusedNodeParams_.gridDim, nodeParams.gridDim);
-    fusedNodeParams_.sharedMemBytes =
-        std::max(fusedNodeParams_.sharedMemBytes, nodeParams.sharedMemBytes);
+    fusedNodeParams_.sharedMemBytes = std::max(fusedNodeParams_.sharedMemBytes, nodeParams.sharedMemBytes);
 
     auto* kernel = hip::GraphFuseRecorder::getDeviceKernel(nodeParams);
-    const auto numKernelArgs = kernel->signature().numParametersAll();
+    const auto numKernelArgsAndHidden = kernel->signature().numParametersAll();
+    const auto numKernelArgs = kernel->signature().numParameters();
+    ClPrint(amd::LOG_ERROR, amd::LOG_ALWAYS, "# Kernel args + hidden: %d", numKernelArgsAndHidden);
+    ClPrint(amd::LOG_ERROR, amd::LOG_ALWAYS, "# Kernel args: %d", numKernelArgs);
 
-    for (size_t i = 0; i < numKernelArgs; ++i) {
-      if (kernel->signature().at(i).info_.hidden_) hiddenkernelArgs_.push_back(nodeParams.kernelParams[i]);
-      else kernelArgs_.push_back(nodeParams.kernelParams[i]); 
+    ClPrint(amd::LOG_ERROR, amd::LOG_ALWAYS, "FusionGroup::generateNode() - Dumping out descriptors for node in fusee_!");
+    dumpDescriptor(kernel);
+    ClPrint(amd::LOG_ERROR, amd::LOG_ALWAYS, "FusionGroup::generateNode() - Dumping out nodeParams->extra for node in fusee_!");
+    dumpExtra(nodeParams);
+
+    // Populate from the extra struct if kernel args are not passed from  kernelParams
+    if (nodeParams.kernelParams == nullptr) {
+      // 'extra' is a struct that contains the following info: 
+      // {
+        // HIP_LAUNCH_PARAM_BUFFER_POINTER, kernargs,
+        // HIP_LAUNCH_PARAM_BUFFER_SIZE, &kernargs_size,
+        // HIP_LAUNCH_PARAM_END 
+      // }
+      fusedNodeParams_.extra[0] = nodeParams.extra[0]; // HIP_LAUNCH_PARAM_BUFFER_POINTER
+      fusedNodeParams_.extra[2] = nodeParams.extra[2]; // HIP_LAUNCH_PARAM_BUFFER_SIZE
+      fusedNodeParams_.extra[4] = nodeParams.extra[4]; // HIP_LAUNCH_PARAM_END
+      kernargs_combined_size += *((size_t*)nodeParams.extra[3]); // += kernargs_size
+      // We cast it back to uint8_t since kernargs are actually stored as this: 
+      // https://github.com/ROCm/hipBLASLt/blob/33e633fe2a270dd5c3a8b0e4ed12147f77d32761/tensilelite/Tensile/Source/lib/include/Tensile/KernelArguments.hpp#L227
+      uint8_t* kernargs = static_cast<uint8_t*>(nodeParams.extra[1]);
+      insertAlignKernarg(8, kernargs, *((size_t*)nodeParams.extra[3]), &kernargs_combined_size);
+    } else {
+      for (size_t i = 0; i < numKernelArgsAndHidden; ++i) {
+        if (kernel->signature().at(i).info_.hidden_) hiddenkernelArgs_.push_back(nodeParams.kernelParams[i]);
+        else kernelArgs_.push_back(nodeParams.kernelParams[i]);
+      }
     }
-    guarantee(nodeParams.extra == nullptr,
-              "current implementation does not support `extra` params");
   }
-  kernelArgs_.push_back(&semaphore_);
-  kernelArgs_.reserve(kernelArgs_.size() + hiddenkernelArgs_.size());
-  kernelArgs_.insert(kernelArgs_.end(), hiddenkernelArgs_.begin(), hiddenkernelArgs_.end());
 
-  fusedNodeParams_.kernelParams = kernelArgs_.data();
-  fusedNodeParams_.extra = nullptr;
+  size_t semaphoreSize = sizeof(semaphore_);
+  kernargs_combined_size += semaphoreSize;
+  uint8_t* semaphoreBytePtr = reinterpret_cast<uint8_t*>(&semaphore_);
+  gemmKernelArgs_.insert(gemmKernelArgs_.end(), semaphoreBytePtr, semaphoreBytePtr + semaphoreSize);
+  fusedNodeParams_.extra[1] = malloc(kernargs_combined_size);
+  if (fusedNodeParams_.extra[1] == nullptr) {
+    ClPrint(amd::LOG_ERROR, amd::LOG_ALWAYS, "FusionGroup::generateNode() - HIP error out of memory for allocating extra[1]: kernargs!");
+  }
+  fusedNodeParams_.extra[3] = malloc(sizeof(void*));
+  if (fusedNodeParams_.extra[3] == nullptr) {
+    ClPrint(amd::LOG_ERROR, amd::LOG_ALWAYS, "FusionGroup::generateNode() - HIP error out of memory for allocating extra[3]: kernargs_size!");
+  }
+  *((size_t*)fusedNodeParams_.extra[3]) = kernargs_combined_size;
+  ::memcpy(fusedNodeParams_.extra[1], gemmKernelArgs_.data(), kernargs_combined_size);
+
+  // TODO: In the near future we have to figure out how to mix kernel args coming from `extra` buffer and the `kernelParams` buffer
+  // The commented code below deals with kernargs coming from kernelParams path
+  // kernelArgs_.push_back(&semaphore_);
+  // kernelArgs_.reserve(kernelArgs_.size() + hiddenkernelArgs_.size());
+  // kernelArgs_.insert(kernelArgs_.end(), hiddenkernelArgs_.begin(), hiddenkernelArgs_.end());
+
+  // for hipblaslt gemm kernels that use hipExtModuleLaunchKernel()
+  fusedNodeParams_.kernelParams = nullptr;
+  // fusedNodeParams_.extra = kernelArgs_.data();
+
+  ClPrint(amd::LOG_ERROR, amd::LOG_ALWAYS, "FusionGroup::generateNode() - Dumping out fusedNodeParams->extra after merging kernargs!");
+  dumpExtra(fusedNodeParams_);
 
   hipError_t status = hip::GraphKernelNode::validateKernelParams(&fusedNodeParams_);
   if (hipSuccess != status) {
     ClPrint(amd::LOG_ERROR, amd::LOG_ALWAYS, "`validateKernelParams` during fusion");
   }
   fusedNode_ = new hip::GraphKernelNode(&fusedNodeParams_, nullptr);
+  
+  auto fusedParams = hip::GraphFuseRecorder::getKernelNodeParams(fusedNode_);
+  auto kernel = hip::GraphFuseRecorder::getDeviceKernel(fusedParams);
+  ClPrint(amd::LOG_ERROR, amd::LOG_ALWAYS, "FusionGroup::generateNode() - Dumping out descriptors for each kernarg in fused kernel!");
+  dumpDescriptor(kernel);
 }
 }  // namespace
 
@@ -224,7 +373,8 @@ void GraphModifier::generateFusedNodes() {
   for (size_t groupId = 0; groupId < currDescription.fusionGroups_.size(); ++groupId) {
     std::string groupKey = currDescription.groupSymbols_.at(groupId);
     auto [funcHandle, fusedKernel] = GraphModifier::symbolTable_.at(groupKey);
-
+    std::string out = "";
+    ClPrint(amd::LOG_ERROR, amd::LOG_ALWAYS, "GOT HERE passed fetch from symbolTable %s", out.c_str());
     auto* group = dynamic_cast<FusionGroup*>(currDescription.fusionGroups_.at(groupId));
     group->generateNode(funcHandle);
   }
@@ -243,7 +393,10 @@ void GraphModifier::run() {
 
   const auto& originalGraphNodes = graph_->GetNodes();
   auto nodes = collectNodes(originalGraphNodes);
+  std::string out = "";
+  ClPrint(amd::LOG_ERROR, amd::LOG_ALWAYS, "GOT HERE collectNodes() passed %s", out.c_str());
   generateFusedNodes();
+  ClPrint(amd::LOG_ERROR, amd::LOG_ALWAYS, "GOT HERE generateFusedNodes() passed %s", out.c_str());
 
   for (size_t i = 0; i < currDescription.fusionGroups_.size(); ++i) {
     auto* group = dynamic_cast<FusionGroup*>(currDescription.fusionGroups_.at(i));
@@ -274,5 +427,6 @@ void GraphModifier::run() {
     }
     graph_->AddNode(fusedNode);
   }
+  ClPrint(amd::LOG_ERROR, amd::LOG_ALWAYS, "GOT HERE depedency and substitution passed %s", out.c_str());
 }
 }  // namespace hip
