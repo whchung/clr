@@ -380,53 +380,83 @@ void GraphModifier::generateFusedNodes() {
   }
 }
 
+void performCortSubstitute(const std::vector<Node>& originalNodes) {
+  for (const auto& kernelNode: originalNodes) {
+    const auto type = kernelNode->GetType();
+    if (type == hipGraphNodeTypeKernel) {
+      // Get kernel symbol name and hipKernelNodeParams
+      hipKernelNodeParams params = GraphFuseRecorder::getKernelNodeParams(kernelNode);
+      amd::Kernel* kernel = GraphFuseRecorder::getDeviceKernel(params);
+      std::string symbolName = kernel->name();
+
+      // Get rearranged func handle by symbol name from the external symbol table
+      auto [cortFuncHandle, cortOriginalKernel] = GraphModifier::symbolTable_.at(symbolName);
+
+      // Modify original hipKernelNodeParams' funcHandle with the rearranged funcHandle
+      params.func = cortFuncHandle;
+
+      // Now set the modified hipKernelNodeParams as the current used hipKernelNodeParams by the original kernel node
+      auto* graphKernelNode = dynamic_cast<GraphKernelNode*>(kernelNode);
+      guarantee(graphKernelNode != nullptr, "Failed to convert a graph node to `hipGraphKernelNode`");
+      hipError_t status = graphKernelNode->SetParams(params);
+      if (hipSuccess != status) {
+        ClPrint(amd::LOG_ERROR, amd::LOG_CODE, "[GraphModifier]: Failed to set rearranged hipKernelNodeParams for kernel - %s", symbolName);
+      }
+    }
+  }
+}
+
 void GraphModifier::run() {
   amd::ScopedLock lock(fclock_);
   currDescription = descriptions_[instanceId_];
 
   auto isOk = check();
   if (!isOk) {
-    ClPrint(amd::LOG_ERROR, amd::LOG_ALWAYS, "substitution of graph %zu failed consistency check",
-            instanceId_);
+    ClPrint(amd::LOG_ERROR, amd::LOG_ALWAYS, "[GraphModifier]: Rearranged code object binary substitution %zu failed consistency check", instanceId_);
     return;
   }
 
+  // 1. Get original graph nodes
   const auto& originalGraphNodes = graph_->GetNodes();
-  auto nodes = collectNodes(originalGraphNodes);
-  std::string out = "";
-  ClPrint(amd::LOG_ERROR, amd::LOG_ALWAYS, "GOT HERE collectNodes() passed %s", out.c_str());
-  generateFusedNodes();
-  ClPrint(amd::LOG_ERROR, amd::LOG_ALWAYS, "GOT HERE generateFusedNodes() passed %s", out.c_str());
 
-  for (size_t i = 0; i < currDescription.fusionGroups_.size(); ++i) {
-    auto* group = dynamic_cast<FusionGroup*>(currDescription.fusionGroups_.at(i));
-    auto* fusedNode = group->getFusedNode();
+  // 2. Modify original graph nodes with kernel codes coming from the rearranged code object
+  performCortSubstitute(originalGraphNodes);
 
-    auto* groupHead = group->getHead();
-    if (groupHead) {
-      const auto& dependencies = groupHead->GetDependencies();
-      std::vector<Node> additionalEdges{fusedNode};
-      for (const auto& dependency : dependencies) {
-        dependency->RemoveUpdateEdge(groupHead);
-        dependency->AddEdge(fusedNode);
-      }
-    }
+  // auto nodes = collectNodes(originalGraphNodes);
+  // std::string out = "";
+  // ClPrint(amd::LOG_ERROR, amd::LOG_ALWAYS, "GOT HERE collectNodes() passed %s", out.c_str());
+  // generateFusedNodes();
+  // ClPrint(amd::LOG_ERROR, amd::LOG_ALWAYS, "GOT HERE generateFusedNodes() passed %s", out.c_str());
 
-    auto* groupTail = group->getTail();
-    if (groupTail) {
-      const auto& edges = groupTail->GetEdges();
-      for (const auto& edge : edges) {
-        groupTail->RemoveUpdateEdge(edge);
-        fusedNode->AddEdge(edge);
-      }
-    }
+  // for (size_t i = 0; i < currDescription.fusionGroups_.size(); ++i) {
+  //   auto* group = dynamic_cast<FusionGroup*>(currDescription.fusionGroups_.at(i));
+  //   auto* fusedNode = group->getFusedNode();
 
-    auto& fusee = group->getNodes();
-    for (auto node : fusee) {
-      graph_->RemoveNode(node);
-    }
-    graph_->AddNode(fusedNode);
-  }
-  ClPrint(amd::LOG_ERROR, amd::LOG_ALWAYS, "GOT HERE depedency and substitution passed %s", out.c_str());
+  //   auto* groupHead = group->getHead();
+  //   if (groupHead) {
+  //     const auto& dependencies = groupHead->GetDependencies();
+  //     std::vector<Node> additionalEdges{fusedNode};
+  //     for (const auto& dependency : dependencies) {
+  //       dependency->RemoveUpdateEdge(groupHead);
+  //       dependency->AddEdge(fusedNode);
+  //     }
+  //   }
+
+  //   auto* groupTail = group->getTail();
+  //   if (groupTail) {
+  //     const auto& edges = groupTail->GetEdges();
+  //     for (const auto& edge : edges) {
+  //       groupTail->RemoveUpdateEdge(edge);
+  //       fusedNode->AddEdge(edge);
+  //     }
+  //   }
+
+  //   auto& fusee = group->getNodes();
+  //   for (auto node : fusee) {
+  //     graph_->RemoveNode(node);
+  //   }
+  //   graph_->AddNode(fusedNode);
+  // }
+  ClPrint(amd::LOG_ERROR, amd::LOG_ALWAYS, "[GraphModifier]: Passed rearranged code object binary substitution!");
 }
 }  // namespace hip
