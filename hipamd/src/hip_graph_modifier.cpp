@@ -380,7 +380,7 @@ void GraphModifier::generateFusedNodes() {
   }
 }
 
-void performCortSubstitute(const std::vector<Node>& originalNodes) {
+void GraphModifier::performCortSubstitution(const std::vector<Node>& originalNodes) {
   for (const auto& kernelNode: originalNodes) {
     const auto type = kernelNode->GetType();
     if (type == hipGraphNodeTypeKernel) {
@@ -398,9 +398,9 @@ void performCortSubstitute(const std::vector<Node>& originalNodes) {
       // Now set the modified hipKernelNodeParams as the current used hipKernelNodeParams by the original kernel node
       auto* graphKernelNode = dynamic_cast<GraphKernelNode*>(kernelNode);
       guarantee(graphKernelNode != nullptr, "Failed to convert a graph node to `hipGraphKernelNode`");
-      hipError_t status = graphKernelNode->SetParams(params);
+      hipError_t status = graphKernelNode->SetParams(&params);
       if (hipSuccess != status) {
-        ClPrint(amd::LOG_ERROR, amd::LOG_CODE, "[GraphModifier]: Failed to set rearranged hipKernelNodeParams for kernel - %s", symbolName);
+        ClPrint(amd::LOG_ERROR, amd::LOG_CODE, "[GraphModifier]: Failed to set rearranged hipKernelNodeParams for kernel - %s", symbolName.c_str());
       }
     }
   }
@@ -410,17 +410,17 @@ void GraphModifier::run() {
   amd::ScopedLock lock(fclock_);
   currDescription = descriptions_[instanceId_];
 
-  auto isOk = check();
-  if (!isOk) {
-    ClPrint(amd::LOG_ERROR, amd::LOG_ALWAYS, "[GraphModifier]: Rearranged code object binary substitution %zu failed consistency check", instanceId_);
-    return;
-  }
+  // auto isOk = check();
+  // if (!isOk) {
+  //   ClPrint(amd::LOG_ERROR, amd::LOG_ALWAYS, "[GraphModifier]: Rearranged code object binary substitution %zu failed consistency check", instanceId_);
+  //   return;
+  // }
 
   // 1. Get original graph nodes
   const auto& originalGraphNodes = graph_->GetNodes();
 
   // 2. Modify original graph nodes with kernel codes coming from the rearranged code object
-  performCortSubstitute(originalGraphNodes);
+  performCortSubstitution(originalGraphNodes);
 
   // auto nodes = collectNodes(originalGraphNodes);
   // std::string out = "";

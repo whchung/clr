@@ -27,7 +27,7 @@ class GraphModifier {
   static bool isInputOk();
   bool check();
   std::vector<Node> collectNodes(const std::vector<Node>& originalNodes);
-  void performCortSubstitute(const std::vector<Node>& originalNodes);
+  void performCortSubstitution(const std::vector<Node>& originalNodes);
   void generateFusedNodes();
   void adjustNodeLevels();
 
