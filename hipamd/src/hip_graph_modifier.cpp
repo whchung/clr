@@ -19,6 +19,8 @@
 
 
 namespace {
+void rtrim(std::string& str) { str.erase(std::find(str.begin(), str.end(), '\0'), str.end()); }
+
 void loadExternalSymbols(const std::vector<std::pair<std::string, std::string>>& fusedGroups) {
   HIP_INIT_VOID();
   for (auto& [symbolName, imagePath] : fusedGroups) {
@@ -381,6 +383,23 @@ void GraphModifier::generateFusedNodes() {
 }
 
 void GraphModifier::performCortSubstitution(const std::vector<Node>& originalNodes) {
+  // This section is for debug purposes, wanted dump out what's inside the symbolTable and see if any symbols are missing
+  ClPrint(amd::LOG_ERROR, amd::LOG_CODE, "[GraphModifier]: Dumping out contents of symbolTable_");
+  for (const auto& entry : GraphModifier::symbolTable_) {  
+    const std::string& key = entry.first;
+    void* voidPtr = entry.second.first;
+    hip::Function* funcPtr = entry.second.second;
+    ClPrint(amd::LOG_ERROR, amd::LOG_CODE, "[GraphModifier]: key: %s", key.c_str());
+    ClPrint(amd::LOG_ERROR, amd::LOG_CODE, "[GraphModifier]: void* address: %p", voidPtr);
+    if (funcPtr) {
+      ClPrint(amd::LOG_ERROR, amd::LOG_CODE, "[GraphModifier]: hip::Function* address: %p", funcPtr);
+    } else {
+      ClPrint(amd::LOG_ERROR, amd::LOG_CODE, "[GraphModifier]: hip::Function* is null");
+    }
+  }
+  ClPrint(amd::LOG_ERROR, amd::LOG_CODE, "[GraphModifier]: Finished dumping contents of symbolTable_");
+
+  // Substitution begins here
   for (const auto& kernelNode: originalNodes) {
     const auto type = kernelNode->GetType();
     if (type == hipGraphNodeTypeKernel) {
@@ -388,20 +407,26 @@ void GraphModifier::performCortSubstitution(const std::vector<Node>& originalNod
       hipKernelNodeParams params = GraphFuseRecorder::getKernelNodeParams(kernelNode);
       amd::Kernel* kernel = GraphFuseRecorder::getDeviceKernel(params);
       std::string symbolName = kernel->name();
-
-      // Get rearranged func handle by symbol name from the external symbol table
-      auto [cortFuncHandle, cortOriginalKernel] = GraphModifier::symbolTable_.at(symbolName);
-
-      // Modify original hipKernelNodeParams' funcHandle with the rearranged funcHandle
-      params.func = cortFuncHandle;
-
-      // Now set the modified hipKernelNodeParams as the current used hipKernelNodeParams by the original kernel node
-      auto* graphKernelNode = dynamic_cast<GraphKernelNode*>(kernelNode);
-      guarantee(graphKernelNode != nullptr, "Failed to convert a graph node to `hipGraphKernelNode`");
-      hipError_t status = graphKernelNode->SetParams(&params);
-      if (hipSuccess != status) {
-        ClPrint(amd::LOG_ERROR, amd::LOG_CODE, "[GraphModifier]: Failed to set rearranged hipKernelNodeParams for kernel - %s", symbolName.c_str());
-      }
+      rtrim(symbolName);
+      try {
+        // Get rearranged func handle by symbol name from the external symbol table  
+        auto [cortFuncHandle, cortOriginalKernel] = GraphModifier::symbolTable_.at(symbolName);  
+        // Modify original hipKernelNodeParams' funcHandle with the rearranged funcHandle  
+        params.func = cortFuncHandle;  
+        // Now set the modified hipKernelNodeParams as the current used hipKernelNodeParams by the original kernel node  
+        auto* graphKernelNode = dynamic_cast<GraphKernelNode*>(kernelNode);  
+        if (graphKernelNode == nullptr) {  
+          ClPrint(amd::LOG_ERROR, amd::LOG_CODE, "[GraphModifier]: Failed to convert a graph node to `GraphKernelNode`");  
+          continue;  
+        }
+        hipError_t status = graphKernelNode->SetParams(&params);  
+        if (hipSuccess != status) {  
+          ClPrint(amd::LOG_ERROR, amd::LOG_CODE, "[GraphModifier]: Failed to set rearranged hipKernelNodeParams for kernel - %s", symbolName.c_str());  
+        }
+        ClPrint(amd::LOG_ERROR, amd::LOG_CODE, "[GraphModifier]: Successfully set the rearranged function handle for kernel - %s", symbolName.c_str());
+      } catch (const std::exception& e) {  
+        ClPrint(amd::LOG_ERROR, amd::LOG_CODE, "[GraphModifier]: Exception caught during symbol table lookup for symbol - %s: %s", symbolName.c_str(), e.what());  
+      }  
     }
   }
 }
