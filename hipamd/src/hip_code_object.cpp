@@ -28,6 +28,7 @@ THE SOFTWARE.
 #include "hip/hip_runtime_api.h"
 #include "hip/hip_runtime.h"
 #include "hip_internal.hpp"
+#include "hip_platform.hpp"
 #include "platform/program.hpp"
 #include <elf/elf.hpp>
 namespace hip {
@@ -853,7 +854,9 @@ hipError_t StatCO::getStatFunc(hipFunction_t* hfunc, const void* hostFunction, i
     return hipErrorInvalidSymbol;
   }
 
-  return it->second->getStatFunc(hfunc, deviceId);
+  LogPrintfInfo("StatCO::getStatFunc hostFunction = 0x%08X", hostFunction);
+  hipError_t status = it->second->getStatFunc(hfunc, deviceId);
+  LogPrintfInfo("hip::Function->getStatFunc() return %d", status);
 }
 
 hipError_t StatCO::getStatFuncAttr(hipFuncAttributes* func_attr, const void* hostFunction,
@@ -923,4 +926,129 @@ hipError_t StatCO::initStatManagedVarDevicePtr(int deviceId) {
   }
   return err;
 }
+
+ExternalCOs::ExternalCOs() : device_id_(ihipGetDevice()) {}
+ExternalCOs::~ExternalCOs() {
+  amd::ScopedLock lock(sclock_);
+  for (auto handle : funcHandles_) {
+    delete handle.first;
+    delete handle.second;
+  }
+  funcHandles_.clear();
+
+  for (auto& [_, handle] : imageHandles_) {
+    if (handle.fdesc_ > 0) {
+      if (handle.fsize_ && !amd::Os::MemoryUnmapFile(handle.image_, handle.fsize_)) {
+        guarantee(false, "Cannot unmap file");
+      }
+      if (!amd::Os::CloseFileHandle(handle.fdesc_)) {
+        guarantee(false, "Cannot close file");
+      }
+    }
+  }
+  imageHandles_.clear();
+}
+
+void ExternalCOs::load(const std::string& symbolName, const std::string& imagePath, StatCO& statCO) {
+  amd::ScopedLock lock(sclock_);
+
+  if (symbolsTable_.find(symbolName) != symbolsTable_.end()) {
+    LogPrintfInfo("symbol %s has already been loaded", symbolName.c_str());
+    return;
+  }
+
+  if (imageHandles_.find(imagePath) == imageHandles_.end()) {
+    auto handle = ImageHandle{};
+    handle.fdesc_ = amd::Os::FDescInit();
+    handle.fsize_ = 0;
+
+    auto isOk = amd::Os::GetFileHandle(imagePath.c_str(), &handle.fdesc_, &handle.fsize_);
+    if (isOk) {
+      LogPrintfInfo("managed to read kernel file `%s`", imagePath.c_str());
+    }
+    else {
+      LogPrintfError("failed to read kernel file `%s`", imagePath.c_str());
+      return;
+    }
+
+    isOk = amd::Os::MemoryMapFileDesc(handle.fdesc_, handle.fsize_, 0, &handle.image_);
+    if (isOk) {
+      LogPrintfInfo("managed to map kernel file `%s`", imagePath.c_str());
+    }
+    else {
+      LogPrintfError("failed to map kernel file `%s`", imagePath.c_str());
+      return;
+    }
+
+    handle.modules_ = statCO.addFatBinary(handle.image_, true);
+    imageHandles_.insert({imagePath, handle});
+  }
+
+  auto& handle = imageHandles_.at(imagePath);
+  auto* hostHostFunc = new size_t;
+  hip::Function* hipFunc = new hip::Function(symbolName, handle.modules_);
+  auto status = statCO.registerStatFunction(hostHostFunc, hipFunc);
+
+  if (status == hipSuccess) {
+    LogPrintfInfo("managed to register `%s`", symbolName.c_str());
+    symbolsTable_.insert({symbolName, {reinterpret_cast<void*>(hostHostFunc), hipFunc}});
+    funcHandles_.push_back({hostHostFunc, hipFunc});
+
+#if 0
+    hipModule_t hmod = nullptr;
+    status = PlatformState::instance().loadModule(&hmod, imagePath.c_str(), handle.image_);
+    if (status != hipSuccess) {
+      LogPrintfInfo("Not able to use loadModule() to load image at %s", imagePath.c_str());
+    } else {
+      LogPrintfInfo("Able to use loadModule() to load image at %s", imagePath.c_str());
+      hipFunction_t hfunc = nullptr;
+      status = PlatformState::instance().getDynFunc(&hfunc, hmod, symbolName);
+      if (status != hipSuccess) {
+        LogPrintfInfo("Not able to use getDynFunc() to obtain hipFunction_t of %s", symbolName.c_str());
+      } else {
+        LogPrintfInfo("Able to use getDynFunc() to obtain hipFunction_t of %s", symbolName.c_str());
+        hip::DeviceFunc* function = hip::DeviceFunc::asFunction(hfunc);
+        amd::Kernel* kernel = function->kernel();
+        LogPrintfInfo("amd::Kernel* kernel = 0x%08X", kernel);
+      }
+    }
+#endif
+#if 0
+    hipFunction_t hfunc = nullptr;
+    status = statCO.getStatFunc(&hfunc, reinterpret_cast<void*>(hostHostFunc), ihipGetDevice());
+    if (status != hipSuccess) {
+      LogPrintfInfo("Not able to getStatFunc for %s on device %d", symbolName.c_str(), ihipGetDevice());
+    } else {
+      LogPrintfInfo("Able to getStatFunc for %s on device %d", symbolName.c_str(), ihipGetDevice());
+    }
+#endif
+#if 1
+    LogPrintfInfo("Current HIP device = %d", ihipGetDevice());
+    LogPrintfInfo("auto* hostHostFunc = 0x%08X", hostHostFunc);
+    LogPrintfInfo("hip::Function* hipFunc = 0x%08X", hipFunc);
+
+    hipFunction_t hfunc = nullptr;
+    status = statCO.getStatFunc(&hfunc, hostHostFunc, ihipGetDevice());
+    if (status != hipSuccess) {
+      LogPrintfInfo("Not able to getStatFunc for %s", symbolName.c_str());
+
+      delete hostHostFunc;
+      delete hipFunc;
+    } else {
+      hip::DeviceFunc* function = hip::DeviceFunc::asFunction(hfunc);
+      amd::Kernel* kernel = function->kernel();
+      LogPrintfInfo("amd::Kernel* kernel = 0x%08X", kernel);
+      auto device = g_devices[ihipGetDevice()]->devices()[0];
+      device::Kernel* devKernel = const_cast<device::Kernel*>(kernel->getDeviceKernel(*device));
+      LogPrintfInfo("Device kernel code handle on device %d = 0x%08X", ihipGetDevice(), devKernel->KernelCodeHandle());
+    }
+#endif
+  }
+  else {
+    LogPrintfError("failed to register `%s` ", symbolName.c_str());
+    delete hostHostFunc;
+    delete hipFunc;
+  }
+}
+
 }  // namespace hip

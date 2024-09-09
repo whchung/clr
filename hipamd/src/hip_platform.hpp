@@ -106,6 +106,12 @@ class PlatformState {
 
   size_t UfdMapSize() const { return ufd_map_.size(); }
 
+  // Fuctions required for the Binary Kernel Fusion
+  void loadExternalSymbol(const std::string& symbolName, const std::string imagePath);
+  hip::ExternalCOs::SymbolTableType getExternalSymbolTable();
+  bool initSemaphore();
+  void* getSemaphore();
+
  private:
   // Dynamic Code Object map, keyin module to get the corresponding object
   std::unordered_map<hipModule_t, hip::DynCO*> dynCO_map_;
@@ -114,5 +120,6 @@ class PlatformState {
   std::unordered_map<textureReference*, std::pair<hipModule_t, std::string>> texRef_map_;
 
   std::unordered_map<std::string, std::shared_ptr<UniqueFD>> ufd_map_; //!< Unique File Desc Map
+  void* semaphore_{nullptr}; //!< Semaphore value for the binary kernel fusion project
 };
 }  // namespace hip

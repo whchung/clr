@@ -94,6 +94,9 @@ if(NOT WIN32)
   endif()
 endif()
 
+find_package(yaml-cpp REQUIRED)
+target_link_libraries(amdhip64 PRIVATE yaml-cpp)
+
 target_sources(amdhip64 PRIVATE
   fixme.cpp
   hip_activity.cpp
@@ -108,6 +111,8 @@ target_sources(amdhip64 PRIVATE
   hip_global.cpp
   hip_graph_internal.cpp
   hip_graph.cpp
+  hip_graph_fuse_recorder.cpp
+  hip_graph_modifier.cpp
   hip_hmm.cpp
   hip_intercept.cpp
   hip_memory.cpp
