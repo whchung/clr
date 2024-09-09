@@ -116,6 +116,7 @@ class PlatformState {
   // Dynamic Code Object map, keyin module to get the corresponding object
   std::unordered_map<hipModule_t, hip::DynCO*> dynCO_map_;
   hip::StatCO statCO_;  //!< Static Code object var
+  hip::ExternalCOs externalCOs_;  // External Code objects
   bool initialized_{false};
   std::unordered_map<textureReference*, std::pair<hipModule_t, std::string>> texRef_map_;
 
