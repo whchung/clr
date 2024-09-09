@@ -107,8 +107,13 @@ class PlatformState {
 
   std::shared_ptr<UniqueFD> GetUniqueFileHandle(const std::string& file_path);
   bool CloseUniqueFileHandle(const std::shared_ptr<UniqueFD>& ufd);
-
   size_t UfdMapSize() const { return ufd_map_.size(); }
+
+  // Fuctions required for the Binary Kernel Fusion
+  void loadExternalSymbol(const std::string& symbolName, const std::string imagePath);
+  hip::ExternalCOs::SymbolTableType getExternalSymbolTable();
+  bool initSemaphore();
+  void* getSemaphore();
 
  private:
   // Dynamic Code Object map, keyin module to get the corresponding object
@@ -120,5 +125,6 @@ class PlatformState {
   std::unordered_map<std::string, std::shared_ptr<UniqueFD>> ufd_map_; //!< Unique File Desc Map
 
   void* dynamicLibraryHandle_{nullptr};
+  void* semaphore_{nullptr}; //!< Semaphore value for the binary kernel fusion project
 };
 }  // namespace hip
