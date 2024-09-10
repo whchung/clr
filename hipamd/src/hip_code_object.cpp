@@ -28,7 +28,6 @@ THE SOFTWARE.
 #include "hip/hip_runtime_api.h"
 #include "hip/hip_runtime.h"
 #include "hip_internal.hpp"
-#include "hip_platform.hpp"
 #include "platform/program.hpp"
 #include <elf/elf.hpp>
 #include "comgrctx.hpp"
@@ -1239,6 +1238,7 @@ hipError_t StatCO::getStatFunc(hipFunction_t* hfunc, const void* hostFunction, i
   LogPrintfInfo("StatCO::getStatFunc hostFunction = 0x%08X", hostFunction);
   hipError_t status = it->second->getStatFunc(hfunc, deviceId);
   LogPrintfInfo("hip::Function->getStatFunc() return %d", status);
+  return status;
 }
 
 hipError_t StatCO::getStatFuncAttr(hipFuncAttributes* func_attr, const void* hostFunction,
