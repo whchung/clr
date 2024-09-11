@@ -190,12 +190,14 @@ void GraphFuseRecorder::run() {
 bool GraphFuseRecorder::findCandidates(const std::vector<Node>& nodes) {
   for (size_t i = 0; i < nodes.size(); ++i) {
     auto& node = nodes[i];
-    append(fusionGroups_);
-    append(fusedExecutionOrder_);
-    fusionGroups_.back().push_back(node);
-    fusedExecutionOrder_.back().push_back(i);
+    const auto type = node->GetType();
+    if (type == hipGraphNodeTypeKernel) {
+      append(fusionGroups_);
+      append(fusedExecutionOrder_);
+      fusionGroups_.back().push_back(node);
+      fusedExecutionOrder_.back().push_back(i);
+    }
   }
-
   return true;
 }
 
