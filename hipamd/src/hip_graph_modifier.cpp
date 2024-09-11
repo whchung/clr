@@ -385,7 +385,7 @@ void GraphModifier::generateFusedNodes() {
 void GraphModifier::performCortSubstitution(const std::vector<Node>& originalNodes) {
   // This section is for debug purposes, wanted dump out what's inside the symbolTable and see if any symbols are missing
   ClPrint(amd::LOG_ERROR, amd::LOG_CODE, "[GraphModifier]: Dumping out contents of symbolTable_");
-  for (const auto& entry : GraphModifier::symbolTable_) {  
+  for (const auto& entry : GraphModifier::symbolTable_) {
     const std::string& key = entry.first;
     void* voidPtr = entry.second.first;
     hip::Function* funcPtr = entry.second.second;
