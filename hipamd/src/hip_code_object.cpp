@@ -844,8 +844,11 @@ hipError_t StatCO::getStatFunc(hipFunction_t* hfunc, const void* hostFunction, i
   if (it == functions_.end()) {
     return hipErrorInvalidSymbol;
   }
-
-  return it->second->getStatFunc(hfunc, deviceId);
+  LogPrintfInfo("StatCO::getStatFunc hostFunction = 0x%08X", hostFunction);
+  hipError_t status = it->second->getStatFunc(hfunc, deviceId);
+  LogPrintfInfo("hip::Function->getStatFunc() return %d", status);
+  return status;
+  // return it->second->getStatFunc(hfunc, deviceId);
 }
 
 hipError_t StatCO::getStatFuncAttr(hipFuncAttributes* func_attr, const void* hostFunction,
