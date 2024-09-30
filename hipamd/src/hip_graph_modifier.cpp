@@ -437,6 +437,7 @@ void GraphModifier::performCortSubstitution(const std::vector<Node>& originalNod
 }
 
 void GraphModifier::run() {
+  amd::ScopedLock lock(fclock_);
   // 1. Get original graph nodes
   const auto& originalGraphNodes = graph_->GetNodes();
   // 2. Modify original graph nodes with kernel codes coming from the rearranged code object
