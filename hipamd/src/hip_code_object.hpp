@@ -215,7 +215,6 @@ class ExternalCOs {
 
   std::unordered_map<std::string, ImageHandle> imageHandles_{};
 };
-
 }; // namespace hip
 
 #endif /* HIP_CODE_OBJECT_HPP */
