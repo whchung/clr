@@ -1239,6 +1239,7 @@ hipError_t StatCO::getStatFunc(hipFunction_t* hfunc, const void* hostFunction, i
   hipError_t status = it->second->getStatFunc(hfunc, deviceId);
   LogPrintfInfo("hip::Function->getStatFunc() return %d", status);
   return status;
+  // return it->second->getStatFunc(hfunc, deviceId);
 }
 
 hipError_t StatCO::getStatFuncAttr(hipFuncAttributes* func_attr, const void* hostFunction,
